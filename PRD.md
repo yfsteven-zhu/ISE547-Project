@@ -1,4 +1,4 @@
-# PRD: CSV Intelligent Data Analysis Platform
+# PRD: "Chat with Your Data Application"
 
 **Version**: v0.2
 **Date**: 2026-03-29
@@ -262,7 +262,7 @@ project/
 ---
 ---
 
-# PRD：CSV 智能数据分析平台
+# PRD："Chat with Your Data Application"
 
 **版本**：v0.2
 **日期**：2026-03-29
