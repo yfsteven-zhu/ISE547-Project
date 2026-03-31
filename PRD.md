@@ -59,7 +59,7 @@ The product is delivered in two phases:
 ### 3.4 AI Data Analysis (P0)
 Analysis pipeline:
 1. Assemble prompt: conversation history + schema of selected files + data samples + user question
-2. Call Claude API (streaming)
+2. Call Gemini API (streaming)
 3. AI decision:
    - If directly inferrable → return textual conclusion
    - If precise computation needed → generate pandas code → execute in backend sandbox → pass results back to AI → AI generates final conclusion
@@ -173,7 +173,7 @@ Supported analysis types (examples):
 **Backend**
 - Framework: Python FastAPI
 - CSV processing: pandas
-- AI integration: Anthropic Claude API (claude-sonnet-4-6), Server-Sent Events streaming
+- AI integration: Google Gemini API (gemini-2.5-pro), Server-Sent Events streaming
 - Code sandbox: restricted Python environment on the backend to safely execute AI-generated pandas code
 - Persistence: SQLite (file metadata + conversation history) + local filesystem (raw CSV storage)
 
@@ -198,7 +198,7 @@ project/
 │   │   └── chat.py          # Conversation/analysis endpoints
 │   ├── services/
 │   │   ├── csv_parser.py    # CSV parsing and schema extraction
-│   │   ├── ai_service.py    # Claude API integration
+│   │   ├── ai_service.py    # Gemini API integration
 │   │   ├── code_executor.py # pandas code sandbox execution
 │   │   └── chart_service.py # Chart data generation
 │   ├── storage/             # Local file persistence
@@ -246,7 +246,7 @@ project/
 |---------|------|
 | Cloud deployment | Local only for both phases |
 | Excel / JSON format support | CSV only |
-| Custom AI model selection | Fixed to Claude |
+| Custom AI model selection | Fixed to Gemini 2.5 Pro |
 | PDF report export | Possible future extension |
 | Real-time collaboration | Phase 2 shares data, no live co-editing |
 
@@ -323,7 +323,7 @@ project/
 ### 3.4 AI 数据分析（P0）
 分析流程：
 1. 组装 prompt：对话历史 + 选中文件的 schema + 数据样本 + 用户问题
-2. 调用 Claude API（流式输出）
+2. 调用 Gemini API（流式输出）
 3. AI 决策：
    - 若可直接推断 → 返回文字结论
    - 若需精确计算 → 生成 pandas 代码 → 后端沙箱执行 → 将执行结果回传给 AI → AI 生成最终结论
@@ -437,7 +437,7 @@ project/
 **后端**
 - 框架：Python FastAPI
 - CSV 处理：pandas
-- AI 集成：Anthropic Claude API（claude-sonnet-4-6），Server-Sent Events 流式输出
+- AI 集成：Google Gemini API（gemini-2.5-pro），Server-Sent Events 流式输出
 - 代码沙箱：后端受限 Python 环境执行 AI 生成的 pandas 代码
 - 数据持久化：SQLite（文件元数据 + 对话历史）+ 本地文件系统（CSV 原文件存储）
 
@@ -462,7 +462,7 @@ project/
 │   │   └── chat.py          # 对话/分析接口
 │   ├── services/
 │   │   ├── csv_parser.py    # CSV 解析与 schema 提取
-│   │   ├── ai_service.py    # Claude API 调用
+│   │   ├── ai_service.py    # Gemini API 调用
 │   │   ├── code_executor.py # pandas 代码沙箱执行
 │   │   └── chart_service.py # 图表数据生成
 │   ├── storage/             # 本地文件持久化
@@ -510,7 +510,7 @@ project/
 |------|------|
 | 云端部署 | 仅本地运行 |
 | 支持 Excel / JSON 格式 | 仅 CSV |
-| 自定义 AI 模型选择 | 固定使用 Claude |
+| 自定义 AI 模型选择 | 固定使用 Gemini 2.5 Pro |
 | 报告 PDF 导出 | 可后续扩展 |
 | 实时协作（多人同时编辑） | 第二阶段仅共享数据，不实时协作 |
 
