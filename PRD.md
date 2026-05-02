@@ -43,26 +43,26 @@ The product is delivered in two phases:
 - Support adding a text description to each file (helps AI understand data semantics)
 - Automatic encoding detection (UTF-8 / GBK and other common encodings)
 
-### 3.2 Historical File Analysis (P0)
-- All uploaded CSV files are persisted locally (survive page refresh)
-- Users can select **one or more** files from the file list to include in the current analysis
+### 3.2 Session File Analysis (P0)
+- CSV files uploaded during the current session are available for analysis
+- All uploaded files are **automatically included** in every query — no manual file selection needed
 - Support cross-file joint analysis (e.g., "Compare sales trends between 2024.csv and 2025.csv")
-- File selection state persists throughout the conversation session
+- Files are cleared when the server restarts (historical file analysis across sessions is a Phase 2 feature)
 
 ### 3.3 Natural Language Q&A (P0)
 - Text input box with multi-turn conversation support (conversation history retained)
-- On each query, the system automatically injects the **currently selected files'** schema + sample data into the AI context
+- On each query, the system automatically injects **all uploaded files'** schema + sample data into the AI context
 - Provide suggested questions dynamically generated based on uploaded file column names
 - Support Enter to send, Shift+Enter for newline
 - Support clearing the conversation and starting over
 
 ### 3.4 AI Data Analysis (P0)
 Analysis pipeline:
-1. Assemble prompt: conversation history + schema of selected files + data samples + user question
-2. Call Gemini API (streaming)
+1. Assemble prompt: conversation history + schema of all uploaded files + data samples + user question
+2. Call OpenRouter API via OpenAI-compatible client (streaming); user selects model from 4 presets
 3. AI decision:
    - If directly inferrable → return textual conclusion
-   - If precise computation needed → generate pandas code → execute in backend sandbox → pass results back to AI → AI generates final conclusion
+   - If precise computation needed → generate pandas code → execute in backend sandbox → pass results back to AI with selected interpretation style → AI generates final conclusion
 4. Stream response back to frontend
 
 Supported analysis types (examples):
@@ -84,7 +84,25 @@ Supported analysis types (examples):
 - Support chart download (PNG format)
 - Charts support hover tooltips for details
 
-### 3.6 Result Display (P0)
+### 3.7 AI Interpretation Style Selection (P0)
+- Three preset interpretation styles are maintained in the backend:
+  - **Business Assistant** (`baseline`): Directly answers user questions based on data outputs
+  - **Data Scientist** (`COT`): Ensures the absolute authenticity and logical consistency of data-driven conclusions (cross-validates ratings vs. review text, rejects dirty data)
+  - **Action-Oriented** (`Action-Oriented`): Focuses on core pain points in reviews to identify profitable opportunities and unmet blue-ocean markets
+- Each style has a short description displayed as a tooltip in the UI
+- Users can select a style before submitting a query; styles cannot be edited by users
+- The code-generation prompt (used to instruct the AI to write pandas code) is fixed and not user-visible
+
+### 3.8 LLM Model Selection (P0)
+- Four LLM models are available via OpenRouter:
+  - **Nemotron 3 Super** (`nvidia/nemotron-3-super-120b-a12b:free`) — high reasoning capability
+  - **OpenAI gpt-oss-20b** (`openai/gpt-oss-20b:free`) — OpenAI open-source model
+  - **Arcee AI Trinity Large Preview** (`arcee-ai/trinity-large-preview:free`) — efficient instruction-following
+  - **Elephant** (`openrouter/elephant-alpha`) — experimental model
+- Users can select a model in the UI; selection applies to the current query
+- Model list is backend-defined and not editable by users
+
+### 3.9 Result Display (P0)
 - AI responses rendered as Markdown
 - Numeric tables displayed as formatted, sortable tables
 - Generated analysis code displayed in syntax-highlighted, collapsible code blocks
@@ -173,9 +191,9 @@ Supported analysis types (examples):
 **Backend**
 - Framework: Python FastAPI
 - CSV processing: pandas
-- AI integration: Google Gemini API (gemini-2.5-pro), Server-Sent Events streaming
+- AI integration: OpenRouter API (OpenAI-compatible client, 4 selectable models), Server-Sent Events streaming
 - Code sandbox: restricted Python environment on the backend to safely execute AI-generated pandas code
-- Persistence: SQLite (file metadata + conversation history) + local filesystem (raw CSV storage)
+- Persistence: SQLite (file metadata + conversation history, session-scoped) + local filesystem (raw CSV storage)
 
 **Local Run**
 - Backend: `uvicorn`, `localhost:8000`
@@ -246,7 +264,6 @@ project/
 |---------|------|
 | Cloud deployment | Local only for both phases |
 | Excel / JSON format support | CSV only |
-| Custom AI model selection | Fixed to Gemini 2.5 Pro |
 | PDF report export | Possible future extension |
 | Real-time collaboration | Phase 2 shares data, no live co-editing |
 
@@ -307,26 +324,26 @@ project/
 - 支持为文件添加备注描述（方便 AI 理解数据含义）
 - 编码自动检测（UTF-8 / GBK 等常见编码）
 
-### 3.2 历史文件分析（P0）
-- 所有上传过的 CSV 文件持久化存储在本地（不随页面刷新丢失）
-- 用户可在文件列表中选择**一个或多个**文件参与本次分析
+### 3.2 会话文件分析（P0）
+- 当前会话内上传的 CSV 文件在对话期间保持可用
+- 每次提问时，系统自动将**所有已上传文件**纳入 AI 上下文，无需手动选择文件
 - 支持跨文件联合分析（如："比较 2024.csv 和 2025.csv 中的销售趋势差异"）
-- 文件选择状态在对话期间保持
+- 服务器重启后文件自动清空（跨会话的历史文件分析为第二阶段功能）
 
 ### 3.3 自然语言问答（P0）
 - 文本输入框，支持多轮对话（保留对话历史）
-- 每次提问时，系统自动将**当前选中文件**的 schema + 样本数据注入到 AI 上下文
+- 每次提问时，系统自动将**所有已上传文件**的 schema + 样本数据注入到 AI 上下文
 - 提供示例问题引导（根据已上传文件的列名动态生成建议问题）
 - 支持 Enter 发送，Shift+Enter 换行
 - 支持清空对话、重新开始
 
 ### 3.4 AI 数据分析（P0）
 分析流程：
-1. 组装 prompt：对话历史 + 选中文件的 schema + 数据样本 + 用户问题
-2. 调用 Gemini API（流式输出）
+1. 组装 prompt：对话历史 + 所有已上传文件的 schema + 数据样本 + 用户问题
+2. 调用 OpenRouter API（OpenAI 兼容客户端，流式输出）；用户可从 4 种预设模型中选择
 3. AI 决策：
    - 若可直接推断 → 返回文字结论
-   - 若需精确计算 → 生成 pandas 代码 → 后端沙箱执行 → 将执行结果回传给 AI → AI 生成最终结论
+   - 若需精确计算 → 生成 pandas 代码 → 后端沙箱执行 → 将执行结果与选定的解读风格回传给 AI → AI 生成最终结论
 4. 流式返回给前端
 
 支持的分析类型（示例）：
@@ -348,7 +365,25 @@ project/
 - 支持图表下载（PNG 格式）
 - 图表可响应点击查看详情（tooltip）
 
-### 3.6 结果展示（P0）
+### 3.7 AI 解读风格选择（P0）
+- 后端预设三种解读风格：
+  - **Business Assistant**（`baseline`）：基于数据输出直接回答用户的业务问题
+  - **Data Scientist**（`COT`）：通过对评分与评论文本的交叉验证、剔除脏数据等步骤，保证结论的真实性与逻辑一致性
+  - **Action-Oriented**（`Action-Oriented`）：聚焦评论中的核心痛点，识别可盈利机会与未被满足的蓝海市场
+- 每种风格配有短描述，在 UI 气泡框内展示
+- 用户可在提问前选择风格，但不可编辑风格内容
+- 代码生成 prompt（用于指导 AI 生成 pandas 代码）固定在后端，用户不可见
+
+### 3.8 LLM 模型选择（P0）
+- 通过 OpenRouter 提供以下四种预设模型：
+  - **Nemotron 3 Super**（`nvidia/nemotron-3-super-120b-a12b:free`）
+  - **OpenAI gpt-oss-20b**（`openai/gpt-oss-20b:free`）
+  - **Arcee AI Trinity Large Preview**（`arcee-ai/trinity-large-preview:free`）
+  - **Elephant**（`openrouter/elephant-alpha`）
+- 用户可在 UI 中选择模型，选择对当前提问生效
+- 模型列表由后端维护，用户不可编辑
+
+### 3.9 结果展示（P0）
 - AI 回复以 Markdown 渲染
 - 数字表格格式化展示（支持排序）
 - 生成的分析代码以代码块高亮展示（可折叠）
@@ -437,9 +472,9 @@ project/
 **后端**
 - 框架：Python FastAPI
 - CSV 处理：pandas
-- AI 集成：Google Gemini API（gemini-2.5-pro），Server-Sent Events 流式输出
+- AI 集成：OpenRouter API（OpenAI 兼容客户端，4 种可选模型），Server-Sent Events 流式输出
 - 代码沙箱：后端受限 Python 环境执行 AI 生成的 pandas 代码
-- 数据持久化：SQLite（文件元数据 + 对话历史）+ 本地文件系统（CSV 原文件存储）
+- 数据持久化：SQLite（文件元数据 + 对话历史，会话级存储）+ 本地文件系统（CSV 原文件存储）
 
 **本地运行**
 - 后端：`uvicorn` 启动，`localhost:8000`
@@ -510,7 +545,6 @@ project/
 |------|------|
 | 云端部署 | 仅本地运行 |
 | 支持 Excel / JSON 格式 | 仅 CSV |
-| 自定义 AI 模型选择 | 固定使用 Gemini 2.5 Pro |
 | 报告 PDF 导出 | 可后续扩展 |
 | 实时协作（多人同时编辑） | 第二阶段仅共享数据，不实时协作 |
 

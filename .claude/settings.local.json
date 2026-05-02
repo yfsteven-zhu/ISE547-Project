@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install *)",
+      "Bash(python -c \"from dotenv import load_dotenv; load_dotenv\\(\\); import main; print\\('Import OK'\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(uvicorn main:app --host 127.0.0.1 --port 8000)",
+      "Bash(curl -s http://127.0.0.1:8000/api/health)",
+      "Bash(curl -s http://127.0.0.1:8000/api/chat/prompts)",
+      "Bash(curl -s http://127.0.0.1:8000/api/chat/models)",
+      "Bash(curl -s http://127.0.0.1:8000/api/files)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/chat/stream -H 'Content-Type: application/json' -d '{\"message\": \"What is the average rating in the dataset?\", \"model_id\": \"nemotron\", \"prompt_id\": \"concise\"}' --max-time 60)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Uploaded:', d['uploaded'][0]['filename'], d['uploaded'][0]['row_count'], 'rows'\\)\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /F /PID 94808)",
+      "PowerShell(Stop-Process -Id 94808 -Force -ErrorAction SilentlyContinue)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/files/upload -F 'files=@../sample data/products.csv')",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/chat/stream -H 'Content-Type: application/json' -d '{\"message\": \"What is the average discounted_price in the dataset? Compute it precisely.\", \"model_id\": \"nemotron\", \"prompt_id\": \"concise\"}' --max-time 120)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/chat/suggestions\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\('-', s\\) for s in d['suggestions'][:3]]\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/chat/history\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(len\\(d\\), 'messages'\\)\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/chat/stream -H 'Content-Type: application/json' -d '{\"message\": \"How many columns does the dataset have?\"}' --max-time 30)",
+      "Bash(awk '{print $5}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Files after restart:', len\\(d\\)\\)\")",
+      "Bash(uvicorn main:app --host 127.0.0.1 --port 8001)",
+      "Bash(curl -s http://127.0.0.1:8001/api/health)",
+      "Bash(curl -s http://127.0.0.1:8001/api/files)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Files after fresh start:', len\\(d\\)\\)\")",
+      "Bash(uvicorn main:app --host 127.0.0.1 --port 8002)",
+      "Bash(curl -s -X POST http://127.0.0.1:8002/api/files/upload -F 'files=@../sample data/products.csv')",
+      "Bash(curl -s -X POST http://127.0.0.1:8002/api/chat/stream -H 'Content-Type: application/json' -d '{\"message\": \"What is the sum of column xyz_nonexistent_column?\", \"model_id\": \"nemotron\", \"prompt_id\": \"concise\"}' --max-time 120)",
+      "Bash(kill %1)",
+      "Bash(uvicorn main:app --host 127.0.0.1 --port 8003)",
+      "Bash(curl -s -X POST http://127.0.0.1:8003/api/files/upload -F 'files=@../sample data/products.csv' -F 'files=@../sample data/reviews.csv')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f['filename'], f['row_count'], 'rows'\\) for f in d['uploaded']]\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8003/api/chat/stream -H 'Content-Type: application/json' -d '{\"message\": \"What is the average price_value across products?\", \"model_id\": \"nemotron\", \"prompt_id\": \"concise\"}' --max-time 90)",
+      "Bash(uvicorn main:app --host 127.0.0.1 --port 8005)",
+      "Bash(curl -s http://127.0.0.1:8005/api/chat/prompts)",
+      "Bash(python -m json.tool kill %1)"
+    ]
+  }
+}

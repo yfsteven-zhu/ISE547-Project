@@ -1,3 +1,15 @@
+"""
+routers/chat.py — HTTP handlers for the conversation and AI analysis endpoints.
+
+Endpoints:
+  POST   /api/chat/stream      Stream an AI response (SSE)
+  GET    /api/chat/history     Fetch full conversation history
+  DELETE /api/chat/history     Clear all conversation messages
+  GET    /api/chat/suggestions Template-based question suggestions (no AI call)
+  GET    /api/chat/prompts     List available interpretation prompt presets
+  GET    /api/chat/models      List available LLM model presets
+"""
+
 from __future__ import annotations
 
 import json
@@ -8,20 +20,33 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from ..database import SessionLocal, get_db
-from ..models import Conversation, CsvFile
-from ..schemas import ChatRequest, ConversationMessage, SuggestionsResponse
-from ..services import ai_service, csv_parser
-from ..services.code_executor import load_dataframes
+from database import SessionLocal, get_db
+from models import Conversation, CsvFile
+from schemas import (
+    ChatRequest,
+    ConversationMessage,
+    ModelInfo,
+    ModelListResponse,
+    PromptInfo,
+    PromptListResponse,
+    SuggestionsResponse,
+)
+from services import ai_service, csv_parser
+from services.code_executor import load_dataframes
 
 router = APIRouter()
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _row_to_message(record: Conversation) -> ConversationMessage:
+    """Convert a DB Conversation row to a ConversationMessage schema."""
     file_ids = json.loads(record.file_ids) if record.file_ids else []
     return ConversationMessage(
         id=record.id,
@@ -33,6 +58,10 @@ def _row_to_message(record: Conversation) -> ConversationMessage:
 
 
 def _file_record_to_context(record: CsvFile) -> dict:
+    """
+    Build the file context dict expected by ai_service.build_system_prompt().
+    Deserialises the JSON TEXT columns stored in the DB.
+    """
     return {
         "filename": record.filename,
         "description": record.description,
@@ -44,41 +73,58 @@ def _file_record_to_context(record: CsvFile) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# POST /stream
+# ---------------------------------------------------------------------------
+
 @router.post("/stream")
 def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
+    """
+    Accept the user's message and stream an AI response via Server-Sent Events.
+
+    All files currently uploaded in this session are automatically included
+    in the AI context — no explicit file selection is needed.
+
+    Flow:
+      1. Validate the message is non-empty.
+      2. Load ALL CsvFile records from the DB.
+      3. Persist the user message to the conversations table.
+      4. Fetch file metadata for context assembly.
+      5. Pre-load DataFrames for potential code execution.
+      6. Fetch conversation history for multi-turn context.
+      7. Return a StreamingResponse yielding SSE events from ai_service.
+
+    Persistence note:
+      The StreamingResponse generator outlives the request-scoped `db`
+      session.  A fresh SessionLocal() is opened inside the generator to
+      persist the assistant message after the stream completes.
+    """
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    if request.file_ids:
-        records = (
-            db.query(CsvFile)
-            .filter(CsvFile.id.in_(request.file_ids))
-            .all()
-        )
-        found_ids = {r.id for r in records}
-        missing = [fid for fid in request.file_ids if fid not in found_ids]
-        if missing:
-            raise HTTPException(
-                status_code=404,
-                detail=f"File(s) not found: {', '.join(missing)}",
-            )
-    else:
-        records = []
+    # --- load ALL uploaded files (no file_ids filtering) ---
+    records = db.query(CsvFile).all()
 
+    # --- persist user message (before streaming) ---
     user_msg_id = str(uuid.uuid4())
     user_msg = Conversation(
         id=user_msg_id,
         role="user",
         content=request.message,
-        file_ids=json.dumps(request.file_ids),
+        file_ids=json.dumps([]),   # file_ids no longer used for filtering
         created_at=_now_utc(),
     )
     db.add(user_msg)
     db.commit()
 
+    # --- build file context for the AI system prompt ---
     files_context = [_file_record_to_context(r) for r in records]
-    dataframes = load_dataframes(request.file_ids, db) if request.file_ids else {}
 
+    # --- pre-load DataFrames for the code executor ---
+    all_file_ids = [r.id for r in records]
+    dataframes = load_dataframes(all_file_ids, db) if all_file_ids else {}
+
+    # --- fetch conversation history (oldest-first, excluding current message) ---
     history_rows = (
         db.query(Conversation)
         .filter(Conversation.id != user_msg_id)
@@ -87,9 +133,12 @@ def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     )
     history = [{"role": r.role, "content": r.content} for r in history_rows]
 
-    file_ids_snapshot = list(request.file_ids)
+    # Capture references needed inside the generator
     message_text = request.message
+    model_id_snapshot = request.model_id
+    prompt_id_snapshot = request.prompt_id
 
+    # --- generator that yields SSE chunks and persists the assistant reply ---
     def generate():
         assistant_parts: list[str] = []
 
@@ -98,7 +147,10 @@ def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             history=history,
             files_context=files_context,
             dataframes=dataframes,
+            model_id=model_id_snapshot,
+            prompt_id=prompt_id_snapshot,
         ):
+            # Accumulate text_delta content to build the full assistant message
             try:
                 event_data = json.loads(chunk.removeprefix("data: ").strip())
                 if event_data.get("type") == "text_delta":
@@ -108,6 +160,8 @@ def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
             yield chunk
 
+        # --- persist the assistant message after streaming completes ---
+        # Use a fresh session because the request-scoped `db` is already closed.
         full_response = "".join(assistant_parts)
         if full_response:
             with SessionLocal() as post_db:
@@ -115,7 +169,7 @@ def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     id=str(uuid.uuid4()),
                     role="assistant",
                     content=full_response,
-                    file_ids=json.dumps(file_ids_snapshot),
+                    file_ids=json.dumps([]),
                     created_at=_now_utc(),
                 )
                 post_db.add(assistant_msg)
@@ -127,33 +181,59 @@ def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            # Disable nginx buffering if the server is placed behind a proxy
             "X-Accel-Buffering": "no",
         },
     )
 
 
+# ---------------------------------------------------------------------------
+# GET /history
+# ---------------------------------------------------------------------------
+
 @router.get("/history", response_model=list[ConversationMessage])
 def get_history(db: Session = Depends(get_db)):
+    """
+    Return the full conversation history ordered oldest-first.
+    Used by the frontend to restore the chat view on page load.
+    """
     rows = db.query(Conversation).order_by(Conversation.created_at.asc()).all()
     return [_row_to_message(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# DELETE /history
+# ---------------------------------------------------------------------------
+
 @router.delete("/history", status_code=204)
 def clear_history(db: Session = Depends(get_db)):
+    """
+    Delete all conversation messages.
+    Uploaded files are not affected.
+    """
     db.query(Conversation).delete()
     db.commit()
 
 
+# ---------------------------------------------------------------------------
+# GET /suggestions
+# ---------------------------------------------------------------------------
+
 @router.get("/suggestions", response_model=SuggestionsResponse)
 def get_suggestions(file_ids: str = "", db: Session = Depends(get_db)):
-    ids = [fid.strip() for fid in file_ids.split(",") if fid.strip()]
+    """
+    Return template-based question suggestions derived from all uploaded
+    files' column names and types.  No AI call is made.
 
-    if not ids:
-        return SuggestionsResponse(
-            suggestions=["Upload a CSV file to get personalised suggestions."]
-        )
+    The `file_ids` query parameter is accepted for backward compatibility
+    but is ignored — suggestions are always based on all uploaded files.
+    """
+    records = db.query(CsvFile).all()
 
-    records = db.query(CsvFile).filter(CsvFile.id.in_(ids)).all()
+    if not records:
+        return SuggestionsResponse(suggestions=[
+            "Upload a CSV file to get personalised suggestions.",
+        ])
 
     files_metadata = [
         {
@@ -165,3 +245,38 @@ def get_suggestions(file_ids: str = "", db: Session = Depends(get_db)):
 
     suggestions = csv_parser.generate_suggestions(files_metadata)
     return SuggestionsResponse(suggestions=suggestions)
+
+
+# ---------------------------------------------------------------------------
+# GET /prompts
+# ---------------------------------------------------------------------------
+
+@router.get("/prompts", response_model=PromptListResponse)
+def get_prompts():
+    """
+    Return the list of available interpretation prompt presets.
+    The frontend uses this to populate the prompt selector UI.
+    Prompts are backend-defined and not editable by the user.
+    """
+    prompts = [
+        PromptInfo(id=p["id"], name=p["name"], description=p["description"])
+        for p in ai_service.get_prompt_list()
+    ]
+    return PromptListResponse(prompts=prompts)
+
+
+# ---------------------------------------------------------------------------
+# GET /models
+# ---------------------------------------------------------------------------
+
+@router.get("/models", response_model=ModelListResponse)
+def get_models():
+    """
+    Return the list of available LLM model presets served via OpenRouter.
+    The frontend uses this to populate the model selector UI.
+    """
+    models = [
+        ModelInfo(id=m["id"], name=m["name"], description=m["description"])
+        for m in ai_service.get_model_list()
+    ]
+    return ModelListResponse(models=models)

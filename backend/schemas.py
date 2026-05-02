@@ -1,5 +1,8 @@
 """
 schemas.py — Pydantic v2 models for request validation and response serialisation.
+
+Pydantic v2 is used throughout.  ORM models are read via from_attributes=True
+(replaces orm_mode from v1).
 """
 
 from __future__ import annotations
@@ -8,14 +11,21 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 
+# ---------------------------------------------------------------------------
+# File schemas
+# ---------------------------------------------------------------------------
+
 class ColumnInfo(BaseModel):
+    """Schema information for a single CSV column."""
     name: str
-    dtype: str
-    non_null_rate: float
-    sample_values: list[str]
+    dtype: str                    # human-readable label: "integer", "float", "string", etc.
+    non_null_rate: float          # 0.0 – 1.0
+    sample_values: list[str]      # up to 5 unique values, converted to strings
 
 
 class CsvFileListItem(BaseModel):
+    """Lightweight file representation used in the file list endpoint.
+    Omits columns_info and preview_data to keep the response small."""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -29,6 +39,7 @@ class CsvFileListItem(BaseModel):
 
 
 class CsvFileDetail(BaseModel):
+    """Full file representation including schema and preview data."""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -44,20 +55,41 @@ class CsvFileDetail(BaseModel):
 
 
 class UploadError(BaseModel):
+    """Describes a single file that failed validation during a batch upload."""
     filename: str
     error: str
 
 
 class UploadResponse(BaseModel):
+    """Response from POST /api/files/upload.
+    Partial success is allowed: files that pass validation are returned in
+    `uploaded`; files that fail are reported in `errors`."""
     uploaded: list[CsvFileDetail]
     errors: list[UploadError]
 
 
 class DescriptionUpdateRequest(BaseModel):
+    """Request body for PATCH /api/files/{id}/description."""
     description: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Chart spec schema (produced by the AI service, relayed to the frontend)
+# ---------------------------------------------------------------------------
+
 class ChartSpec(BaseModel):
+    """Structured chart specification returned to the frontend as an SSE event.
+    The frontend (Recharts) renders this directly without any server-side
+    image generation.
+
+    chart_type values: "bar" | "line" | "pie" | "scatter" | "heatmap"
+
+    data layout by chart type:
+      bar / line : [{"name": ..., "value": ...}, ...]  — x_key / y_key name the fields
+      pie        : [{"name": ..., "value": ...}, ...]
+      scatter    : [{"x": ..., "y": ...}, ...]
+      heatmap    : [{"row": ..., "col": ..., "value": ...}, ...]
+    """
     chart_type: str
     title: str
     data: list[dict[str, Any]]
@@ -67,14 +99,24 @@ class ChartSpec(BaseModel):
     y_label: str | None = None
 
 
+# ---------------------------------------------------------------------------
+# Chat schemas
+# ---------------------------------------------------------------------------
+
 class ChatRequest(BaseModel):
+    """Request body for POST /api/chat/stream."""
     message: str
+    # file_ids is kept for frontend backward compatibility but is no longer
+    # used for file filtering — all uploaded files are always used.
     file_ids: list[str] = []
+    # ID of the interpretation prompt preset to use (default: "baseline")
     prompt_id: str = "baseline"
+    # ID of the LLM model preset to use (default: "nemotron")
     model_id: str = "nemotron"
 
 
 class ConversationMessage(BaseModel):
+    """A single conversation turn as stored in the DB."""
     model_config = ConfigDict(from_attributes=True)
 
     id: str
@@ -85,56 +127,33 @@ class ConversationMessage(BaseModel):
 
 
 class SuggestionsResponse(BaseModel):
+    """Response from GET /api/chat/suggestions."""
     suggestions: list[str]
 
 
+# ---------------------------------------------------------------------------
+# Prompt and model selection schemas
+# ---------------------------------------------------------------------------
+
 class PromptInfo(BaseModel):
+    """A single interpretation prompt preset."""
     id: str
     name: str
     description: str
 
 
 class PromptListResponse(BaseModel):
+    """Response from GET /api/chat/prompts."""
     prompts: list[PromptInfo]
 
 
 class ModelInfo(BaseModel):
+    """A single LLM model preset."""
     id: str
     name: str
     description: str
 
 
 class ModelListResponse(BaseModel):
+    """Response from GET /api/chat/models."""
     models: list[ModelInfo]
-
-
-# =========================
-# Evaluation schemas
-# =========================
-
-class EvaluationRunRequest(BaseModel):
-    file_ids: list[str]
-    questions: list[str] = []
-    model_ids: list[str] = ["nemotron", "elephant", "arcee_trinity", "gpt_oss"]
-    prompt_ids: list[str] = ["baseline", "COT", "Action-Oriented"]
-
-
-class EvaluationScoreRow(BaseModel):
-    batch: int
-    model: str
-    prompt: str
-    DF: float
-    ACTN: float
-    EXPL: float
-    answer: str | None = None
-
-
-class EvaluationBatchTable(BaseModel):
-    batch: int
-    rows: list[dict[str, Any]]
-
-
-class EvaluationRunResponse(BaseModel):
-    raw_scores: list[EvaluationScoreRow]
-    batch_tables: list[EvaluationBatchTable]
-    final_table: list[dict[str, Any]]
