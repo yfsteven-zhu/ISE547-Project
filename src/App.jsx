@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./index.css";
@@ -63,6 +63,8 @@ function cleanSummaryText(text) {
 }
 
 function App() {
+  const fileInputRef = useRef(null);
+
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -105,7 +107,8 @@ function App() {
       });
 
       if (!response.ok) {
-        throw new Error("File upload failed.");
+        const text = await response.text();
+        throw new Error(text || "File upload failed.");
       }
 
       const data = await response.json();
@@ -137,6 +140,8 @@ function App() {
       ]);
     } catch (err) {
       setError(err.message || "Failed to upload file.");
+    } finally {
+      e.target.value = "";
     }
   };
 
@@ -171,7 +176,8 @@ function App() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error("Backend response failed.");
+        const text = await response.text().catch(() => "");
+        throw new Error(text || "Backend response failed.");
       }
 
       const reader = response.body.getReader();
@@ -374,12 +380,16 @@ function App() {
         </div>
 
         <div className="upload-box">
-          <label htmlFor="csv-upload" className="upload-btn">
+          <button
+            type="button"
+            className="upload-btn"
+            onClick={() => fileInputRef.current?.click()}
+          >
             Choose CSV File
-          </label>
+          </button>
 
           <input
-            id="csv-upload"
+            ref={fileInputRef}
             type="file"
             accept=".csv"
             style={{ display: "none" }}
